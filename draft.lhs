@@ -19,11 +19,6 @@ Map is used to implement the store.
 
 > import Map
 
-Value are assumed to be integers.
-
-> data Type = IntT | BoolT
->             deriving (Show, Eq)
-
 Variable names are assumed to be single characters.
 
 > type Var = Char
@@ -35,7 +30,7 @@ Value are assumed to be integers or booleans.
 
 A program is consist of a list of variable declarations and a list of statements
 
-> type Prog = ([(Var, Type)], [Stmt])
+> type Prog = ([Var], [Stmt])
 
 A statement can be a skip, assignment, if or do statement.
 
@@ -63,16 +58,9 @@ store to exec.
 
 > run :: Prog -> Store -> Store
 
-> run (vars, stmts) store
->    | varsOk prog && (noRepeatVars vars []) = exec prog store
+> run prog store
+>    | varsOk prog = exec prog store
 >    | otherwise = error ("Undeclared variables.")
->    where prog = (vars, stmts)
-
-> noRepeatVars :: [(Var, Type)] -> [Var] -> Bool
-> noRepeatVars [] _ = True
-> noRepeatVars ((v, ty):rest) names
->     | elem v names = error ("Duplicated variable name: "++[v])
->     | otherwise = noRepeatVars rest (names++[v])
 
 Check statically that all variables used are declared before executing the program.
 If none, returns True, otherwise False.
@@ -82,22 +70,15 @@ If none, returns True, otherwise False.
 > varsOk (vars, stmt : stmts) =
 >     varsOk' (vars, stmt) && varsOk (vars, stmts)
 
-type Prog = ([(Var, Type)], [Stmt])
-
-> varsOk' :: ([(Var, Type)], Stmt) -> Bool
+> varsOk' :: ([Var], Stmt) -> Bool
 > varsOk' (vars, Skip) = True
-> varsOk' (vars, Asgn v e) = elems v vars && varsOk'' (vars, e)
+> varsOk' (vars, Asgn v e) = elem v vars && varsOk'' (vars, e)
 > varsOk' (vars, If e prog1 prog2) = varsOk'' (vars, e) && varsOk prog1 && varsOk prog2
 > varsOk' (vars, Do e prog) = varsOk'' (vars, e) && varsOk prog
 
-> elems :: Var -> [(Var, Type)] -> Bool
-> elems var [] = False
-> elems var ((v, ty):xs) | var == v = True
->                        | otherwise = elems var xs
-
-> varsOk'' :: ([(Var, Type)], Exp) -> Bool
+> varsOk'' :: ([Var], Exp) -> Bool
 > varsOk'' (vars, (Var v))
->    | elems v vars = True
+>    | elem v vars = True
 >    | otherwise = error ("Undeclared variable: " ++ [v])
 > varsOk'' (vars, (Const c)) = True
 > varsOk'' (vars, (Bin op x y)) = varsOk'' (vars, x) && varsOk'' (vars, y)
@@ -138,7 +119,7 @@ Evaluate an expression, according to its type
 > eval (LogNot op x) s = applyNot op (eval x s)
 > eval (Var v) s
 >    | hasKey v s = getVal v s
->    | otherwise = error ("Uninitialised variable: " ++ [v])
+>    | otherwise = error ("Undefined variable" ++ [v])
 
 Apply an arithmetic, relational, or logical operator
 
@@ -180,71 +161,64 @@ Some sample stores
 > s1 = []
 > s2 = [('x', Int 1)]
 > s3 = [('x', Int 1), ('y', Int 2)]
-> s4 = [('x', Bool True), ('y', Int 2)]
+> s4 = [('x',Bool True), ('y', Int 2)]
 
 Some sample programs
 
-> p1 = ([('x', IntT)], [Skip])
-> p2 = ([('x', IntT), ('y', IntT)], [Skip, Skip])
-> p3 = ([('x', IntT)], [Asgn 'x' e1])
-> p4 = ([('x', IntT)], [Asgn 'x' (Var 'x')])
-> p5 = ([('x', IntT), ('y', IntT)], [Asgn 'x' (Var 'y')])
-> p6 = ([('x', IntT), ('y', IntT)], [Asgn 'x' (Bin Plus (Var 'x') (Const (Int 1)))])
-> p7 = ([('x', IntT), ('y', IntT), ('z', IntT)], [Asgn 'x' e1, Asgn 'y' e2,
->   (If (Bin Eq (Var 'x') (Var 'y')) ([('z', IntT)], [Asgn 'z' e1]) ([('z', IntT)], [Asgn 'z' e2]))])
-> p8 = ([('i', IntT), ('s', IntT)],
+> p1 = (['x'], [Skip])
+> p2 = (['x', 'y'], [Skip, Skip])
+> p3 = (['x'], [Asgn 'x' e1])
+> p4 = (['x'], [Asgn 'x' (Var 'x')])
+> p5 = (['x', 'y'], [Asgn 'x' (Var 'y')])
+> p6 = (['x', 'y'], [Asgn 'x' (Bin Plus (Var 'x') (Const (Int 1)))])
+> p7 = (['x', 'y', 'z'], [Asgn 'x' e1, Asgn 'y' e2,
+>   (If (Bin Eq (Var 'x') (Var 'y')) (['z'], [Asgn 'z' e1]) (['z'], [Asgn 'z' e2]))])
+> p8 = (['i', 's'],
 >        [Asgn 'i' e1, Asgn 's' e0,
->         (Do (Bin Lt (Var 'i') (Var 'n')) ([('s', IntT), ('i', IntT)], [Asgn 's' (Bin Plus (Var 's') e1), Asgn 'i' e5]))])
+>         (Do (Bin Lt (Var 'i') (Var 'n')) (['s', 'i'], [Asgn 's' (Bin Plus (Var 's') e1), Asgn 'i' e5]))])
 
 > test1 = if checkResult (run prog store) output
 >        then "Test 1: passed"
 >        else "### Failure in: Test 1: variable test"
->        where prog = ([('y', IntT)], [Asgn 'y' e1])
->              store = [('x', Int 1), ('y', Int 2)]
->              output = [('x', Int 1), ('y', Int 1)]
+>        where prog = p1
+>              store = s2
+>              output = s2
 
 > test2 = if checkResult (run prog store) output
 >        then "Test 2: passed"
 >        else "### Failure in: Test 2: variable test"
->        where prog = ([('x', BoolT)], [Asgn 'x' e7])
->              store = [('x', Bool True), ('y', Bool True)]
->              output = [('x', Bool False), ('y', Bool True)]
+>        where prog = (['y'], [Asgn 'y' e1])
+>              store = [('x', Int 1), ('y', Int 2)]
+>              output = [('x', Int 1), ('y', Int 1)]
 
 > test3 = if checkResult (run prog store) output
 >        then "Test 3: passed"
->        else "### Failure in: Test 3: binary operator test"
->        where prog = ([('y', IntT)], [Asgn 'y' (Bin Plus e2 e1)])
->              store = [('x', Int 1), ('y', Int 2)]
->              output = [('x', Int 1), ('y', Int 3)]
+>        else "### Failure in: Test 3: variable test"
+>        where prog = (['x'], [Asgn 'x' e7])
+>              store = [('x', Bool True), ('y', Bool True)]
+>              output = [('x', Bool False), ('y', Bool True)]
 
 > test4 = if checkResult (run prog store) output
 >        then "Test 4: passed"
->        else "### Failure in: Test 4: assignment variable test"
->        where prog = ([('x', IntT), ('y', IntT)], [Asgn 'x' (Var 'y')])
+>        else "### Failure in: Test 4: binary operator test"
+>        where prog = (['y'], [Asgn 'y' (Bin Plus e2 e1)])
 >              store = [('x', Int 1), ('y', Int 2)]
->              output = [('x', Int 2), ('y', Int 2)]
+>              output = [('x', Int 1), ('y', Int 3)]
 
 > test5 = if checkResult (run prog store) output
 >        then "Test 5: passed"
->        else "### Failure in: Test 5: equal operator test"
->        where prog = ([('x', IntT), ('y', IntT)], [If (Bin Eq (Var 'x') (Var 'y')) ([('x', IntT)], [Asgn 'x' e0]) p1])
+>        else "### Failure in: Test 5: assignment variable test"
+>        where prog = (['x', 'y'], [Asgn 'x' (Var 'y')])
 >              store = [('x', Int 1), ('y', Int 2)]
->              output = [('x', Int 1), ('y', Int 2)]
+>              output = [('x', Int 2), ('y', Int 2)]
 
-> test6 = if checkResult (run prog store) output
->        then "Test 6: passed"
->        else "### Failure in: Test 6: equal operator test"
->        where prog = ([('x', IntT), ('y', IntT)], [If (Bin Eq (Var 'x') (Var 'y')) ([('x', IntT)], [Asgn 'x' e0]) p1])
->              store = [('x', Int 1), ('y', Int 1)]
->              output = [('x', Int 0), ('y', Int 1)]
-
-> test0 = run prog store
->        where prog = ([('x', IntT)], [Asgn 'x' (Var 'y')])
+> test6 = run prog store
+>        where prog = (['x'], [Asgn 'x' (Var 'y')])
 >              store = [('x', Int 1), ('y', Int 2)]
 
 
 > getAllTests = test1 ++"\n"++ test2 ++"\n"++ test3 ++ "\n"++
->               test4 ++"\n"++ test5 ++"\n"++ test6
+>               test4 ++"\n"++ test5
 
 > tests = putStrLn getAllTests
 
@@ -262,3 +236,16 @@ Some sample programs
 > contains exp (x: xs)
 >    | exp == x = True
 >    | otherwise = contains exp xs
+
+
+To check if a store contains uninitialised variable or not.
+
+ initVars :: [Declaration] -> [Stmt] -> Store -> Bool
+ initVars [] _ = True
+ initVars ((name, ty):rest) store
+     | hasKey name store = initVars rest store
+     | otherwise = error ("Variable uninitialised: " ++ show name)
+
+To check if a list of statements contains an assignment statement for variable given.
+
+ isVarInit :: Var -> [Stmt] -> Bool
