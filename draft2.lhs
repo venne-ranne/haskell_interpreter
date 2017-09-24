@@ -35,7 +35,7 @@ Variable names are assumed to be single characters.
 
 Value are assumed to be integers or booleans.
 
-> data Val = Int Int | Bool Bool | Array Array
+> data Val = Int Int | Bool Bool | Array [(Int, Val)]
 >             deriving (Show, Eq)
 
 A program is consist of a list of variable declarations and a list of statements
@@ -66,10 +66,6 @@ An operation is +, -, *, / , ^, =, /=, <, <=, >, >=, &&, || or not
 A store is a map from variables to values
 
 > type Store = Map Var Val
-
-A store is a map from variables to values
-
-> type Array = Map Int Val
 
 To run a program with a given initial store, we just pass the program and
 store to exec.
@@ -191,7 +187,7 @@ Replaces the element at the specified position in this array with the specified 
 > setE idx v (Bool _) = error ("Cannot set an element into Bool type.")
 > setE idx v (Array a) = setE' idx v a []
 
-> setE' :: Int -> Val -> Array -> Array -> Val
+> setE' :: Int -> Val -> [(Int, Val)] -> [(Int, Val)] -> Val
 > setE' idx v [] newArray = (Array newArray)
 > setE' idx v ((i, val):xs) newArray
 >        | idx == i = Array (newArray ++ xs ++ [(idx, v)])
