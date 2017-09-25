@@ -1,6 +1,7 @@
-Initial code for COMP304 Assignment 3, 2017.
+COMP304 Assignment 3, 2017
 
-Author: Lindsay Groves, VUW, 2017.
+Initial code Author: Lindsay Groves, VUW, 2017.
+Modified by: Vivienne Yapp.
 
 This is an interpreter for a simple while program language, as presented in
 lectures.  The assignment asks you to make several extensions to the language.
@@ -35,7 +36,11 @@ Value are assumed to be integers or booleans.
 
 A program is consist of a list of variable declarations and a list of statements
 
-> type Prog = ([(Var, Type)], [Stmt])
+> type Prog = ([Declaration], [Stmt])
+
+A declared variable consist of a name and a type.
+
+> type Declaration = (Var, Type)
 
 A statement can be a skip, assignment, if or do statement.
 
@@ -64,9 +69,12 @@ store to exec.
 > run :: Prog -> Store -> Store
 
 > run (vars, stmts) store
->    | varsOk prog && (noRepeatVars vars []) = exec prog store
+>    | varsOk prog && noRepeated = exec prog store
 >    | otherwise = error ("Undeclared variables.")
 >    where prog = (vars, stmts)
+>          noRepeated = noRepeatVars vars []
+
+Added function: To check if the list of declarations contains duplicated names.
 
 > noRepeatVars :: [(Var, Type)] -> [Var] -> Bool
 > noRepeatVars [] _ = True
@@ -74,15 +82,13 @@ store to exec.
 >     | elem v names = error ("Duplicated variable name: "++[v])
 >     | otherwise = noRepeatVars rest (names++[v])
 
-Check statically that all variables used are declared before executing the program.
-If none, returns True, otherwise False.
+Added function: Check statically that all variables used are declared before
+executing the program. If none, returns True, otherwise False.
 
 > varsOk :: Prog -> Bool
 > varsOk (_, []) = True
 > varsOk (vars, stmt : stmts) =
 >     varsOk' (vars, stmt) && varsOk (vars, stmts)
-
-type Prog = ([(Var, Type)], [Stmt])
 
 > varsOk' :: ([(Var, Type)], Stmt) -> Bool
 > varsOk' (vars, Skip) = True
@@ -108,26 +114,31 @@ resulting state to the next statement at each step.
 
 > exec :: Prog -> Store -> Store
 > exec (vars, []) store = store
-> exec (vars, (stmt : rest)) store = exec (vars, rest) (exec' stmt store)
+> exec (vars, (stmt : rest)) store = exec (vars, rest) (exec' vars stmt store)
 
 Execute a single statement, according to its semantics
 
-> exec' :: Stmt -> Store -> Store
+> exec' :: [Declaration] -> Stmt -> Store -> Store
 
-> exec' Skip store = store
+> exec' _ Skip store = store
 
-> exec' (Asgn var exp) store =
->       setVal var (eval exp store) store
+> exec' vars (Asgn var exp) store
+>     | assignTypeOk newV declaredV = setVal var newV store
+>     | otherwise = error msg
+>     where newV = (eval exp store)
+>           declaredV = getDeclaredVar var vars
+>           typeV = snd declaredV
+>           msg = "Variable assignment error: Couldn't match value '" ++ show newV ++ "' with type '" ++ show typeV++"'"
 
-> exec' (If cond thenPart elsePart) store =
+> exec' _ (If cond thenPart elsePart) store =
 >       if b
 >       then exec thenPart store
 >       else exec elsePart store
 >       where (Bool b) = eval cond store
 
-> exec' (Do cond body) store =
+> exec' vars (Do cond body) store =
 >       if not b then store
->       else exec' (Do cond body) (exec body store)
+>       else exec' vars (Do cond body) (exec body store)
 >       where (Bool b) = eval cond store
 
 Evaluate an expression, according to its type
@@ -139,6 +150,21 @@ Evaluate an expression, according to its type
 > eval (Var v) s
 >    | hasKey v s = getVal v s
 >    | otherwise = error ("Uninitialised variable: " ++ [v])
+
+Added function: To get declared variable from a list of variable declarations.
+
+> getDeclaredVar :: Var -> [Declaration] -> Declaration
+> getDeclaredVar var [] = error ("Undeclared variable: " ++ [var])
+> getDeclaredVar var ((v, ty):xs)
+>    | var == v = (v, ty)
+>    | otherwise = getDeclaredVar var xs
+
+Added function: To check if the type of a value match the type of the declared variable.
+
+> assignTypeOk :: Val -> Declaration -> Bool
+> assignTypeOk (Int _) (_, IntT) = True
+> assignTypeOk (Bool _) (_, BoolT) = True
+> assignTypeOk _ _ = False
 
 Apply an arithmetic, relational, or logical operator
 
@@ -157,7 +183,7 @@ Apply an arithmetic, relational, or logical operator
 > apply Or (Bool x) (Bool y) = Bool (x || y)
 > apply op x y = error("Illegal operator: " ++(show op))
 
-Apply a "not" logical operator
+Added function: Apply a "not" logical operator
 
 > applyNot :: Op -> Val -> Val
 > applyNot Not (Bool x) = Bool (not x)
@@ -196,52 +222,80 @@ Some sample programs
 >        [Asgn 'i' e1, Asgn 's' e0,
 >         (Do (Bin Lt (Var 'i') (Var 'n')) ([('s', IntT), ('i', IntT)], [Asgn 's' (Bin Plus (Var 's') e1), Asgn 'i' e5]))])
 
+
+The following is some examples of error-reporting when illegal action is performed.
+
+Error 1: When try to assign a boolean type const to an integer type variable.
+
+< > *While1> run ([('y', IntT)],[Asgn 'y' (Const (Bool True))]) [('y', Int 90)]
+< > *** Exception: Variable assignment error: Couldn't match value 'Bool True' with type 'IntT'
+< > CallStack (from HasCallStack):
+< >   error, called at While1.lhs:126:21 in main:While1
+
+Error 2: When assign an undeclared variable to a variable
+
+< > *While1> run ([('y', IntT)],[Asgn 'y' (Var 'x')]) [('y', Int 90)]
+< > *** Exception: Undeclared variable: x
+< > CallStack (from HasCallStack):
+< >   error, called at While1.lhs:106:20 in main:While1
+
+Error 3: When assign an uninitialised variable to other variable
+
+< > *While1> run ([('x', IntT), ('y', IntT)],[Asgn 'x' (Var 'y')]) [('x', Int 90)]
+< > *** Exception: Uninitialised variable: y
+< > CallStack (from HasCallStack):
+< >   error, called at While1.lhs:151:20 in main:While1
+
+Error 4: Duplicated variable names
+
+< > *While1> run ([('x', IntT), ('x', IntT), ('y', IntT)],[Asgn 'x' (Var 'y')]) [('x', Int 90)]
+< > *** Exception: Duplicated variable name: x
+< > CallStack (from HasCallStack):
+< >   error, called at While1.lhs:79:24 in main:While1
+
+TESTING CASES: To run all the tests, type in "printTests".
+
 > test1 = if checkResult (run prog store) output
->        then "Test 1: passed"
->        else "### Failure in: Test 1: variable test"
+>        then "Test 1: passed - Assign a value (Int type) to a variable."
+>        else "### Failure in: Test 1: ssign a value (Int type) to a variable"
 >        where prog = ([('y', IntT)], [Asgn 'y' e1])
 >              store = [('x', Int 1), ('y', Int 2)]
 >              output = [('x', Int 1), ('y', Int 1)]
 
 > test2 = if checkResult (run prog store) output
->        then "Test 2: passed"
->        else "### Failure in: Test 2: variable test"
->        where prog = ([('x', BoolT)], [Asgn 'x' e7])
->              store = [('x', Bool True), ('y', Bool True)]
+>        then "Test 2: passed - Assign a value (Bool type) to a variable."
+>        else "### Failure in: Test 2: passed - Assign a value (Int type) to a variable."
+>        where prog = ([('x', BoolT)], [Asgn 'x' (Const (Bool False))])
+>              store = [('y', Bool True)]
 >              output = [('x', Bool False), ('y', Bool True)]
 
 > test3 = if checkResult (run prog store) output
->        then "Test 3: passed"
->        else "### Failure in: Test 3: binary operator test"
+>        then "Test 3: passed - Assign a value (adding two integers) into a variable."
+>        else "### Failure in: Test 3: Assign a value (adding two integers) into a variable."
 >        where prog = ([('y', IntT)], [Asgn 'y' (Bin Plus e2 e1)])
 >              store = [('x', Int 1), ('y', Int 2)]
 >              output = [('x', Int 1), ('y', Int 3)]
 
 > test4 = if checkResult (run prog store) output
->        then "Test 4: passed"
->        else "### Failure in: Test 4: assignment variable test"
->        where prog = ([('x', IntT), ('y', IntT)], [Asgn 'x' (Var 'y')])
->              store = [('x', Int 1), ('y', Int 2)]
->              output = [('x', Int 2), ('y', Int 2)]
+>        then "Test 4: passed - Do expression to increment 'x' till x > y is false."
+>        else "### Failure in: Test 4: Do expression to increment 'x' till x > y is false."
+>        where prog = ([('x', IntT), ('y', IntT)], [Do (Bin Gt (Var 'x') (Var 'y')) ([('x', IntT), ('y', IntT)], [Asgn 'x' (Bin Minus (Var 'x') (e1)), Asgn 'y' (Const (Int 188))])])
+>              store = [('x', Int 1000), ('y', Int 500)]
+>              output = [('x', Int 188), ('y', Int 188)]
 
 > test5 = if checkResult (run prog store) output
->        then "Test 5: passed"
->        else "### Failure in: Test 5: equal operator test"
->        where prog = ([('x', IntT), ('y', IntT)], [If (Bin Eq (Var 'x') (Var 'y')) ([('x', IntT)], [Asgn 'x' e0]) p1])
->              store = [('x', Int 1), ('y', Int 2)]
->              output = [('x', Int 1), ('y', Int 2)]
+>        then "Test 5: passed - OR operator in IF statement"
+>        else "### Failure in: Test 5: OR operator in IF statement"
+>        where prog = ([('x', BoolT), ('y', BoolT)], [If (Bin Or (Var 'x') (Var 'y')) ([('x', BoolT)], [Asgn 'x' (Const (Bool False))]) p1])
+>              store = [('x', Bool True), ('y', Bool False)]
+>              output = [('x', Bool False), ('y', Bool False)]
 
 > test6 = if checkResult (run prog store) output
->        then "Test 6: passed"
->        else "### Failure in: Test 6: equal operator test"
+>        then "Test 6: passed - Equal operator expression in an IF statement"
+>        else "### Failure in: Test 6: Equal operator expression (check if two variables are equal) in an IF statement"
 >        where prog = ([('x', IntT), ('y', IntT)], [If (Bin Eq (Var 'x') (Var 'y')) ([('x', IntT)], [Asgn 'x' e0]) p1])
 >              store = [('x', Int 1), ('y', Int 1)]
 >              output = [('x', Int 0), ('y', Int 1)]
-
-> test0 = run prog store
->        where prog = ([('x', IntT)], [Asgn 'x' (Var 'y')])
->              store = [('x', Int 1), ('y', Int 2)]
-
 
 > getAllTests = test1 ++"\n"++ test2 ++"\n"++ test3 ++ "\n"++
 >               test4 ++"\n"++ test5 ++"\n"++ test6
@@ -250,6 +304,8 @@ Some sample programs
 
 > printTests :: IO ()
 > printTests = tests
+
+The following functions are for testing purpose only. To check if an output matches with expected values.
 
 > checkResult :: Store -> Store -> Bool
 > checkResult [] _ = True
@@ -262,3 +318,35 @@ Some sample programs
 > contains exp (x: xs)
 >    | exp == x = True
 >    | otherwise = contains exp xs
+
+
+DISCUSSION:
+
+Part 1: Adding Boolean and Declarations
+
+I done everything on Part 1. To extend the language to allow Boolean variable,
+what I did first is I changed the "type Val" to "data Val" so that the program
+store Boolean and Integer values. Maintain the distinction with a union type
+using a tag, e.g. data Val = Int Int | Bool Bool. To represent an integer, we write Int 99.
+As for the declarations, I modified the "type prog" so it also included a list declarations
+and a list of statements, e.g. ([Declaration], [Stmt]) ([(Var 'x', IntT)], [Asgn 'x' (Const (Int 88))]).
+
+Other modification included combined the apply and applyc function together to ensure
+that operations are applied to values of the correct type, and returns a value of
+appropriate type. To extend the OR, AND and NOT operators, I extended the "data Op"
+and since NOT operator is not :: Bool -> Bool, I have to add a new expression (LogNot Op Exp)
+which only take one expression.
+
+For the error conditions, I chose to do static checking on the variable declarations and
+duplicated variables. Because it is easier to maintain and implement, as I don't have
+to pass the list of variable names as an extra argument to exec, exec' and eval functions.
+The runtime error checking included uninitialised variable, assignment variable (data type
+do not match). To detect an uninitialised variable, I chose to do the runtime checking as
+I only have to raise an error in the eval function. We could do it statically too, but we
+will have to pass an extra argument (store) to VarsOK function and execute the hasKey
+function in Map in order to do the checking.
+
+The test cases are mostly checking on the evaluation of the expressions and also check
+whether the functions above return the correct values. If the test is passed, it will
+prints a passed test message. Otherwise it will print an error message by stating
+which function that not passed the tests. 

@@ -1,7 +1,7 @@
-varOkCOMP304 Assignment 3, 2017.
+COMP304 Assignment 3, 2017.
 
 Initial code from Author: Lindsay Groves, VUW, 2017.
-Author: Vivienne Yapp
+Modified by: Vivienne Yapp
 
 This is an interpreter for a simple while program language, as presented in
 lectures.  The assignment asks you to make several extensions to the language.
@@ -121,29 +121,6 @@ To check if a variable consist in a list of variable declarations.
 > varOk var ((v, ty):xs) | var == v = True
 >                        | otherwise = varOk var xs
 
-To get declared variable from a list of variable declarations.
-
-> getDeclaredVar :: Var -> [Declaration] -> Declaration
-> getDeclaredVar var [] = error ("Undeclared variable: " ++ [var])
-> getDeclaredVar var ((v, ty):xs)
->    | var == v = (v, ty)
->    | otherwise = getDeclaredVar var xs
-
-To check the type of an expression.
-
-> expType :: Exp -> [Declaration] -> Type
-> expType (Const (Int _)) _ = IntT
-> expType (Const (Bool _)) _ = BoolT
-> expType (LogNot op _ ) _ = BoolT
-> expType (Bin op _ _) _
->     | elem op [Eq,Ne,Lt, Le, Gt, Ge, And, Or] = BoolT
->     | otherwise = IntT
-> expType (Var v) vars
->     | (length filtered == 1) = findType
->     | otherwise = error ("Undeclared variable: "++[v])
->     where filtered = filter (\(name, ty) -> name == v) vars
->           findType = snd (head (filtered))
-
 To execute a program, we just execute each statement in turn, passing the
 resulting state to the next statement at each step.
 
@@ -184,6 +161,18 @@ Execute a single statement, according to its semantics
 >            arr = getVal var store
 >            newArray = setE idx newV arr
 
+Evaluate an expression, according to its type
+
+> eval :: Exp -> Store -> [Declaration] -> Val
+> eval (Const n) _ _ = n
+> eval (Bin op x y) s vars = apply op (eval x s vars) (eval y s vars)
+> eval (LogNot op x) s vars = applyNot op (eval x s vars)
+> eval (Item idx x) s vars = getItem idx (eval x s vars)
+> eval (Var v) s vars
+>    | hasKey v s = getVal v s
+>    | otherwise = error ("Uninitialised variable: " ++ [v])
+>    where ty = expType (Var v) vars
+
 Replaces the element at the specified position in this array with the specified element.
 
 > setE :: Int -> Val -> Val -> Val
@@ -197,6 +186,29 @@ Replaces the element at the specified position in this array with the specified 
 >        | idx == i = Array (newArray ++ xs ++ [(idx, v)])
 >        | otherwise = setE' idx v xs (newArray++[(i, val)])
 
+To get declared variable from a list of variable declarations.
+
+> getDeclaredVar :: Var -> [Declaration] -> Declaration
+> getDeclaredVar var [] = error ("Undeclared variable: " ++ [var])
+> getDeclaredVar var ((v, ty):xs)
+>    | var == v = (v, ty)
+>    | otherwise = getDeclaredVar var xs
+
+To check the type of an expression.
+
+> expType :: Exp -> [Declaration] -> Type
+> expType (Const (Int _)) _ = IntT
+> expType (Const (Bool _)) _ = BoolT
+> expType (LogNot op _ ) _ = BoolT
+> expType (Bin op _ _) _
+>     | elem op [Eq,Ne,Lt, Le, Gt, Ge, And, Or] = BoolT
+>     | otherwise = IntT
+> expType (Var v) vars
+>     | (length filtered == 1) = findType
+>     | otherwise = error ("Undeclared variable: "++[v])
+>     where filtered = filter (\(name, ty) -> name == v) vars
+>           findType = snd (head (filtered))
+
 To check if the type of a value match the type of the declared variable.
 
 > assignTypeOk :: Val -> Declaration -> Bool
@@ -206,18 +218,6 @@ To check if the type of a value match the type of the declared variable.
 > assignTypeOk (Bool _) (_, (ArrayT (BoolT, _))) = True
 > assignTypeOk (Array _) (_, (ArrayT _)) = True
 > assignTypeOk _ _ = False
-
-Evaluate an expression, according to its type
-
-> eval :: Exp -> Store -> [Declaration] -> Val
-> eval (Const n) _ _ = n
-> eval (Bin op x y) s vars = apply op (eval x s vars) (eval y s vars)
-> eval (LogNot op x) s vars = applyNot op (eval x s vars)
-> eval (Item idx x) s vars = getItem idx (eval x s vars)
-> eval (Var v) s vars
->    | hasKey v s = getVal v s
->    | otherwise = error ("Uninitialised variable: " ++ [v])
->    where ty = expType (Var v) vars
 
 Retrieve an element from an array. Raise an error if the given value is not an array.
 
