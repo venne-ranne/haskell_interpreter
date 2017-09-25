@@ -253,6 +253,7 @@ Error 4: Duplicated variable names
 < > CallStack (from HasCallStack):
 < >   error, called at While1.lhs:79:24 in main:While1
 
+
 TESTING CASES: To run all the tests, type in "printTests".
 
 > test1 = if checkResult (run prog store) output
@@ -349,4 +350,4 @@ function in Map in order to do the checking.
 The test cases are mostly checking on the evaluation of the expressions and also check
 whether the functions above return the correct values. If the test is passed, it will
 prints a passed test message. Otherwise it will print an error message by stating
-which function that not passed the tests. 
+which function that not passed the tests.
